@@ -115,3 +115,47 @@ La arquitectura predeterminada es `17 → 24 → 1`: 17 descriptores moleculares
 una capa oculta `tanh` y una salida lineal. La salida se transforma de vuelta
 a las unidades originales de `Solubility` antes de calcular y registrar los
 errores.
+
+## Estimar volumen de agua para una dosis
+
+`solubility_volume.py` lee la corrida con menor RMSE de validación del archivo
+JSON, calcula la predicción logS de cada medicamento y estima el agua necesaria
+para alcanzar una solución saturada:
+
+```bash
+python3 solubility_volume.py
+```
+
+Por defecto usa estas dosis:
+
+- 500 mg de paracetamol (`A-1694`)
+- 10 mg de aspirina (`E-1274`)
+- 4 mg de clorfenamina (`I-19`)
+
+El cálculo asume que `logS = log10(S)` y que `S` se mide en mol/L. A partir de
+la dosis `m` en mg y del peso molecular `MW` en g/mol:
+
+```text
+S (mol/L) = 10 ** logS
+V (mL) = m (mg) / (MW (g/mol) * S (mol/L))
+```
+
+El script informa el volumen individual calculado para cada dosis. Para una
+mezcla ideal en un único recipiente, muestra además el máximo de esos tres
+volúmenes como mínimo teórico compartido: el agua debe ser suficiente para el
+compuesto menos soluble. No suma los volúmenes individuales.
+
+Las dosis se pueden cambiar desde la línea de comandos:
+
+```bash
+python3 solubility_volume.py \
+  --paracetamol-mg 500 \
+  --aspirin-mg 10 \
+  --chlorphenamine-mg 4
+```
+
+Se pueden indicar otros archivos de corrida o dataset con `--model` y `--data`.
+La estimación es una aproximación de saturación, no una recomendación de
+preparación ni de administración: no modela pH, temperatura, forma salina,
+excipientes o interacciones entre sustancias. En particular, el peso molecular
+usado es el de la forma química que aparece en el dataset.
