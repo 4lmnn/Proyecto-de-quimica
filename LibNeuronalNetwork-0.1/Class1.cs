@@ -10,6 +10,7 @@ public enum Neuron {
 public class NeuralNetwork {
     private List<Layer> layers = new List<Layer>();
     private double alfa;
+    public IReadOnlyList<Layer> Layers => layers;
 
     // Alfa se asigna aqui porque es constante en todas las
     // capas de nuestra red
@@ -39,6 +40,13 @@ public class NeuralNetwork {
     // usamos esa salida como nueva 'x' y esto se repite hasta neuestra
     // ultima capa, una vez termina retorna 'yPred' de la capa [^1]
     public double[] ForWard(double[] inputs) {
+        if (layers.Count == 0) {
+            throw new InvalidOperationException("La red no tiene capas.");
+        }
+        if (inputs.Length != layers[0].InputSize) {
+            throw new ArgumentException($"La red espera {layers[0].InputSize} entradas y recibió {inputs.Length}.", nameof(inputs));
+        }
+
         double[] current = inputs;
         foreach (var layer in layers)
         {
@@ -49,6 +57,9 @@ public class NeuralNetwork {
 
     public void Train(double[] inputs, double[] yReal) {
         double[] yPred = ForWard(inputs);
+        if (yReal.Length != yPred.Length) {
+            throw new ArgumentException($"La red produce {yPred.Length} salidas y recibió {yReal.Length} valores objetivo.", nameof(yReal));
+        }
 
         // Conseguimos nuestro error en nuestra ultima capa
         double[] error = new double[yReal.Length];
@@ -68,7 +79,7 @@ public class Layer {
     private double[] biases;
     private double[] outputs;
     private double[] sums;
-    private double[] inputs;
+    private double[]? inputs;
     // Solo lectura
     public double[][] Weights => weights;
     public double[]   Biases  => biases;
@@ -80,9 +91,13 @@ public class Layer {
     private Func<double, double> Activate;
     private Func<double, double, double> Derive;
 
-    private static readonly Random random= new Random();
+    private readonly Random random;
 
-    public Layer(int inputSize, int outputSize, Neuron neuron) {
+    public Layer(int inputSize, int outputSize, Neuron neuron, int? seed = null) {
+        if (inputSize <= 0) throw new ArgumentOutOfRangeException(nameof(inputSize));
+        if (outputSize <= 0) throw new ArgumentOutOfRangeException(nameof(outputSize));
+        random = seed.HasValue ? new Random(seed.Value) : Random.Shared;
+
         weights = new double[outputSize][];
         biases  = new double[outputSize];
         outputs = new double[outputSize];
@@ -111,6 +126,8 @@ public class Layer {
                 Derive = (z, y) => 1.0;
                 lim = Math.Sqrt(2.0 / inputSize);
                 break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(neuron));
         }
 
         // Inicializamos los pesos de cada neurona en nuestra capa de manera aleatoria
@@ -126,6 +143,13 @@ public class Layer {
 
     // Propagacion hacia atras
     public double[] BackPropagation(double[] error, double alfa) {
+        if (error.Length != outputs.Length) {
+            throw new ArgumentException($"La capa produce {outputs.Length} salidas y recibió {error.Length} errores.", nameof(error));
+        }
+        if (inputs is null) {
+            throw new InvalidOperationException("Debe ejecutarse ForWard antes de BackPropagation.");
+        }
+
         double[] yPred = outputs;
 
         // Consigo delta de cada neurona: error * derivada
@@ -162,6 +186,9 @@ public class Layer {
 
     // Conseguimos 'yPred'
     public double[] ForWard(double[] inputs) {
+        if (inputs.Length != InputSize) {
+            throw new ArgumentException($"La capa espera {InputSize} entradas y recibió {inputs.Length}.", nameof(inputs));
+        }
         this.inputs = inputs;
 
         for (int i = 0; i < outputs.Length; i++) {

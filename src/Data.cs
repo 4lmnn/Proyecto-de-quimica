@@ -1,49 +1,106 @@
-using System.ComponentModel;
-using System.Diagnostics.Contracts;
+using System.Globalization;
 
 namespace ProyectoQuimixa;
 
 class Data {
-    static public (string[], double[][], double[], double[][], double[]) Extraer(string path, string[] ids)
+    private static readonly string[] FeatureNames =
     {
-        var xList = new List<double[]>(10000);
-        var yList = new List<double>(10000);
-        var xSearch = new List<double[]>();
-        var ySearch = new List<double>();
-        var idFound = new List<string>();
+        "MolWt", "MolLogP", "MolMR", "HeavyAtomCount", "NumHAcceptors",
+        "NumHDonors", "NumHeteroatoms", "NumRotatableBonds", "NumValenceElectrons",
+        "NumAromaticRings", "NumSaturatedRings", "NumAliphaticRings", "RingCount",
+        "TPSA", "LabuteASA", "BalabanJ", "BertzCT"
+    };
 
-        bool lineOne = true;
+    private static (List<string> ids, List<double[]> x, List<double> y) Load(string path)
+    {
+        using var reader = new StreamReader(path);
+        string? headerLine = reader.ReadLine();
+        if (headerLine is null) throw new InvalidDataException("El archivo CSV está vacío.");
 
-        foreach (string line in File.ReadLines(path))
+        var headers = ParseCsvLine(headerLine);
+        var columns = headers.Select((name, index) => (name, index))
+            .ToDictionary(item => item.name, item => item.index, StringComparer.OrdinalIgnoreCase);
+        int idColumn = columns["ID"];
+        int targetColumn = columns["Solubility"];
+        int[] featureColumns = FeatureNames.Select(name => columns[name]).ToArray();
+
+        var ids = new List<string>();
+        var x = new List<double[]>();
+        var y = new List<double>();
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
         {
-            if (string.IsNullOrEmpty(line)) continue;
-            if (lineOne)
-            {
-                lineOne = false;
-                continue;
-            }
-            
-            string[] parts = line.Split(',');
-            int n = parts.Length;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            string[] parts = ParseCsvLine(line);
+            ids.Add(parts[idColumn]);
+            y.Add(double.Parse(parts[targetColumn], CultureInfo.InvariantCulture));
 
-            string id = parts[0];
-
-            var xCurrent = new double[17];
-            for (int i = 0; i < 17; i++)
+            var features = new double[featureColumns.Length];
+            for (int i = 0; i < featureColumns.Length; i++)
             {
-                xCurrent[i] = double.Parse(parts[n - 17 + i]);
+                features[i] = double.Parse(parts[featureColumns[i]], CultureInfo.InvariantCulture);
             }
-            
-            if (Array.IndexOf(ids, id) != -1)
+            x.Add(features);
+        }
+
+        return (ids, x, y);
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var fields = new List<string>();
+        var field = new System.Text.StringBuilder();
+        bool quoted = false;
+        for (int i = 0; i < line.Length; i++)
+        {
+            char current = line[i];
+            if (current == '"')
             {
-                idFound.Add(id);
-                xSearch.Add(xCurrent);
-                ySearch.Add(double.Parse(parts[n - 21]));
+                if (quoted && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    field.Append('"');
+                    i++;
+                }
+                else
+                {
+                    quoted = !quoted;
+                }
+            }
+            else if (current == ',' && !quoted)
+            {
+                fields.Add(field.ToString());
+                field.Clear();
             }
             else
             {
-                xList.Add(xCurrent);
-                yList.Add(double.Parse(parts[n - 21]));
+                field.Append(current);
+            }
+        }
+        fields.Add(field.ToString());
+        return fields.ToArray();
+    }
+
+    static public (string[], double[][], double[], double[][], double[]) Extraer(string path, string[] ids)
+    {
+        var (allIds, allX, allY) = Load(path);
+        var xSearch = new List<double[]>();
+        var ySearch = new List<double>();
+        var idFound = new List<string>();
+        var xList = new List<double[]>(allIds.Count);
+        var yList = new List<double>(allIds.Count);
+
+        for (int i = 0; i < allIds.Count; i++)
+        {
+            if (Array.IndexOf(ids, allIds[i]) != -1)
+            {
+                idFound.Add(allIds[i]);
+                xSearch.Add(allX[i]);
+                ySearch.Add(allY[i]);
+            }
+            else
+            {
+                xList.Add(allX[i]);
+                yList.Add(allY[i]);
             }
         }
         
@@ -61,34 +118,8 @@ class Data {
 
     static public (double[][], double[]) Extraer(string path)
     {
-         var xList = new List<double[]>(10000);
-        var yList = new List<double>(10000);
-
-        bool lineOne = true;
-
-        foreach (string line in File.ReadLines(path))
-        {
-            if (string.IsNullOrEmpty(line)) continue;
-            if (lineOne)
-            {
-                lineOne = false;
-                continue;
-            }
-            
-            string[] parts = line.Split(',');
-            int n = parts.Length;
-            var xCurrent = new double[17];
-
-            yList.Add(double.Parse(parts[n - 21]));
-
-            for (int i = 0; i < 17; i++)
-            {
-                xCurrent[i] = double.Parse(parts[n - 17 + i]);
-            }
-            xList.Add(xCurrent);
-        }
-
-        return (xList.ToArray(), yList.ToArray()); 
+        var (_, x, y) = Load(path);
+        return (x.ToArray(), y.ToArray());
     }
 
     static public (double[], double[]) MinMax(double[][] x)
